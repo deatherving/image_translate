@@ -169,29 +169,49 @@ class Discriminator:
 
 
 class cLSGAN:
-	def __init__(self, batch_size, width = 256, lr = 0.0002):
+	def __init__(self, batch_size, image_size = 256, lr = 0.0002):
 		self.generator = Generator()
 		self.discriminator = Discriminator()
 		self.batch_size = batch_size
 		self.lr = lr
-		self.real_images_pair = tf.placeholder(tf.float32, shape = [self.batch_size, 2, width, width, 3])
-	def build_graph(self):
+		self.real_images_pair = tf.placeholder(tf.float32, shape = [self.batch_size, 2, image_size, image_size, 3])
+	def build_graph(self, is_peason_div = False):
+		def build_loss(d_logits_fake, d_logits_real, a, b, c):
+			d_loss = 0.5 * tf.reduce_mean(tf.square(d_logits_real - b)) + tf.reduce_mean(tf.square(d_logits_fake -a))
+			
+			lsgan_loss = 0.5 * tf.reduce_mean(tf.square(d_logits_fake - c))
+
+			return d_loss, lsgan_loss
+
 		real_img_pair = self.real_images_pair
 		real_img_p1, real_img_p2 = tf.split(real_img_pair, 2, axis = 1)
 
-		real_img_p1 = tf.squeeze(real_img_p1, 1)
-		real_img_p2 = tf.squeeze(real_img_p2, 1)
+		real_img_source = tf.squeeze(real_img_p1, 1)
+		real_img_target = tf.squeeze(real_img_p2, 1)
+
+		g_logits = self.generator(real_img_source)
+
+		fake_pair = tf.concat([real_img_source, g_logits], axis = 3)
+
+		real_pair = tf.concat([real_img_source, real_img_target], axis = 3)
+
+		d_logits_fake = self.discriminator(fake_pair)[-1]
+
+		d_logits_real = self.discriminator(real_pair)[-1]
 
 
-	def __call__(self):
-		return self.build_graph()
+		if is_peason_div:
+			d_loss, lsgan_loss = build_loss(d_logits_fake, d_logits_real, -1, 1, 0)
+		else:
+			d_loss, lsgan_loss = build_loss(d_logits_fake, d_logits_real, 0, 1, 1)
 
-class image_reader:
-	def __init__():
-		return None
+		d_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(d_loss, var_list = self.discriminator.variables)
 
-	def read_img():
-		return None
+		lsgan_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(lsgan_loss, var_list = self.generator.variables)
+
+
+		return d_optim, lsgan_optim, d_loss, lsgan_loss
+
 
 
 def read_data_pair():
@@ -204,9 +224,40 @@ def train(input_dir, target_dir, save_dir, batch_size = 32, lr = 5e-5, nb_epoch 
 
 	#imgs_pair = read_data_pair(input_dir, target_dir, target_size = [128, 128])
 
-	return None
+	nb_samples = imgs_pair.shape[0]
 
+	cLSGAN_model = cLSGAN(batch_size = batch_size)
 
+	d_optim, lsgan_optim, d_loss, lsgan_loss = cLSGAN_model.build_graph(False)
+
+	with tf.Session() as sess:
+		sess.run(tf.global_variables_initilizer())
+		
+		for epoch in range(1, nb_epoch + 1):
+			print "Training Epoch %d" % epoch
+
+			for i in range(nb_batches):
+
+				for j in range(5):
+			
+					real_images_pair = imgs_pair[np.random.randint(nb_samples, size = batch_size)]
+
+					sess.run(d_optim, feed_dict = {cLSGAN_model: real_images_pair})
+
+				sess.run(lsgan_optim)
+
+				if epoch % 10 == 0:
+					sampled_imgs = sess.run(cLSGAN.sample_image())
+
+					idx = 0
+			
+					for each_im in sampled_imgs:
+						img = sess.run(tf.image.encode_jpeg(each_im))
+
+						with open(save_dir + '/sample%d_%d.jpeg' % (epoch, idx), "wb") as f:
+							f.write(img)
+
+						idx += 1
 
 
 if __name__ == '__main__':
