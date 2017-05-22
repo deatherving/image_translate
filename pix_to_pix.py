@@ -167,7 +167,7 @@ class Discriminator:
 
 
 class cLSGAN:
-	def __init__(self, batch_size, image_size = 64, lr = 0.0002):
+	def __init__(self, batch_size, image_size = 64, lr = 5e-5):
 		self.generator = Generator()
 		self.image_size = image_size
 		self.discriminator = Discriminator()
@@ -286,7 +286,7 @@ def read_data_pair(source_dir, target_dir, target_size):
 	return imgs_pair
 
 
-def train(input_dir, target_dir, save_dir, batch_size = 64, lr = 0.0002, nb_epoch = 1000):
+def train(input_dir, target_dir, save_dir, batch_size = 64, lr = 5e-5, nb_epoch = 1000):
 	print "[*] Start our magic"
 
 	print "[*] Read the paired data"
@@ -337,4 +337,4 @@ def train(input_dir, target_dir, save_dir, batch_size = 64, lr = 0.0002, nb_epoc
 
 
 if __name__ == '__main__':
-	train("./test_source", "./test_target", "./save_dir")
+	train("./source_dir", "./target_dir", "./save_dir")
