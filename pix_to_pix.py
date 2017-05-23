@@ -175,6 +175,7 @@ class cLSGAN:
 		self.lr = lr
 		self.real_images_pair = tf.placeholder(tf.float32, shape = [self.batch_size, 2, image_size, image_size, 3])
 	def build_graph(self, is_peason_div = False):
+		'''
 		def build_loss(d_logits_fake, d_logits_real, a, b, c):
 			d_loss = 0.5 * tf.reduce_mean(tf.square(d_logits_real - b)) + tf.reduce_mean(tf.square(d_logits_fake - a))
 			
@@ -207,10 +208,38 @@ class cLSGAN:
 
 		lsgan_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(lsgan_loss, var_list = self.generator.variables)
 
+		'''
+		real_img_pair = self.real_images_pair
+		real_img_p1, real_img_p2 = tf.split(real_img_pair, 2, axis = 1)
+
+		real_img_source = tf.squeeze(real_img_p1, 1)
+		real_img_target = tf.squeeze(real_img_p2, 1)
+	
+		g_logits = self.generator(real_img_source)
+
+		fake_pair = tf.concat([real_img_source, g_logits], axis = 3)
+		real_pair = tf.concat([real_img_source, real_img_target], axis = 3)
+
+		d_logits_fake = self.discriminator(fake_pair)
+
+		d_logits_real = self.discriminator(real_pair)
+
+		d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits = d_logits_fake, labels = tf.zeros([self.batch_size, 1])))
+
+		d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits = d_logits_real, labels = tf.ones([self.batch_size, 1])))
+
+		d_loss = d_loss_fake + d_loss_real
+
+		lsgan_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits = d_logits_fake, labels = tf.ones([self.batch_size, 1])))
+
+		d_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(d_loss, var_list = self.discriminator.variables)
+
+		lsgan_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(lsgan_loss, var_list = self.generator.variables)
+
 		return d_optim, lsgan_optim, d_loss, lsgan_loss, g_logits
 
 
-	def sample_image(self, real_img_pair):
+	def sample_image(self, real_img_pair, sample_size):
 
 		real_img_p1, real_img_p2 = tf.split(real_img_pair, 2, axis = 1)
 
@@ -286,7 +315,7 @@ def read_data_pair(source_dir, target_dir, target_size):
 	return imgs_pair
 
 
-def train(input_dir, target_dir, save_dir, batch_size = 64, lr = 5e-5, nb_epoch = 1000):
+def train(input_dir, target_dir, save_dir, batch_size = 1, lr = 5e-5, sample_size nb_epoch = 1000):
 	print "[*] Start our magic"
 
 	print "[*] Read the paired data"
@@ -297,8 +326,10 @@ def train(input_dir, target_dir, save_dir, batch_size = 64, lr = 5e-5, nb_epoch 
 
 	nb_samples = imgs_pair.shape[0]
 
-	nb_batches = int(nb_samples / batch_size)
+	#nb_batches = int(nb_samples / batch_size)
 
+	nb_batches = 32 / batch_size
+	
 	cLSGAN_model = cLSGAN(batch_size = batch_size, lr = lr)
 
 	d_optim, lsgan_optim, d_loss, lsgan_loss, g_logits = cLSGAN_model.build_graph(False)
@@ -319,7 +350,7 @@ def train(input_dir, target_dir, save_dir, batch_size = 64, lr = 5e-5, nb_epoch 
 
 				sess.run(lsgan_optim, feed_dict = {cLSGAN_model.real_images_pair: real_images_pair})
 
-			if epoch % 20 == 0:
+			if epoch % 5 == 0:
 
 				sampled_imgs = sess.run(cLSGAN_model.sample_image(real_images_pair))
 	
