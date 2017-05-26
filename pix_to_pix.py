@@ -176,6 +176,7 @@ class cLSGAN:
 		self.real_images_pair = tf.placeholder(tf.float32, shape = [self.batch_size, 2, image_size, image_size, 3])
 	def build_graph(self, is_peason_div = False):
 		'''
+		# lsgan pix2pix
 		def build_loss(d_logits_fake, d_logits_real, a, b, c):
 			d_loss = 0.5 * tf.reduce_mean(tf.square(d_logits_real - b)) + tf.reduce_mean(tf.square(d_logits_fake - a))
 			
@@ -204,11 +205,13 @@ class cLSGAN:
 		else:
 			d_loss, lsgan_loss = build_loss(d_logits_fake, d_logits_real, 0, 1, 1)
 
-		d_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(d_loss, var_list = self.discriminator.variables)
+		d_optim = tf.train.RMSPropOptimizer(learning_rate = self.lr, decay = 0.99).minimize(d_loss, var_list = self.discriminator.variables)
 
-		lsgan_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(lsgan_loss, var_list = self.generator.variables)
+		lsgan_optim = tf.train.RMSPropOptimizer(learning_rate = self.lr, decay = 0.99).minimize(lsgan_loss, var_list = self.generator.variables)
 
 		'''
+
+		# gan pix2pix, perhaps you should add batch_normalization to the generator and discriminator for acceleration
 		real_img_pair = self.real_images_pair
 		real_img_p1, real_img_p2 = tf.split(real_img_pair, 2, axis = 1)
 
@@ -232,14 +235,14 @@ class cLSGAN:
 
 		lsgan_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits = d_logits_fake, labels = tf.ones([self.batch_size, 1])))
 
-		d_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(d_loss, var_list = self.discriminator.variables)
+		d_optim = tf.train.AdamOptimizer(learning_rate = self.lr, beta1 = 0.5).minimize(d_loss, var_list = self.discriminator.variables)
 
-		lsgan_optim = tf.train.AdamOptimizer(learning_rate = self.lr).minimize(lsgan_loss, var_list = self.generator.variables)
+		lsgan_optim = tf.train.AdamOptimizer(learning_rate = self.lr, beta1 = 0.5).minimize(lsgan_loss, var_list = self.generator.variables)
 
-		return d_optim, lsgan_optim, d_loss, lsgan_loss, g_logits
+		return d_optim, lsgan_optim, d_loss, lsgan_loss
 
 
-	def sample_image(self, real_img_pair, sample_size):
+	def sample_image(self, real_img_pair):
 
 		real_img_p1, real_img_p2 = tf.split(real_img_pair, 2, axis = 1)
 
@@ -315,7 +318,7 @@ def read_data_pair(source_dir, target_dir, target_size):
 	return imgs_pair
 
 
-def train(input_dir, target_dir, save_dir, batch_size = 1, lr = 5e-5, sample_size nb_epoch = 1000):
+def train(input_dir, target_dir, save_dir, batch_size = 1, lr = 5e-5, sample_size = 1, pretrain_times = 10, dis_train_times = 2, nb_epoch = 1000):
 	print "[*] Start our magic"
 
 	print "[*] Read the paired data"
@@ -328,11 +331,11 @@ def train(input_dir, target_dir, save_dir, batch_size = 1, lr = 5e-5, sample_siz
 
 	#nb_batches = int(nb_samples / batch_size)
 
-	nb_batches = 32 / batch_size
+	batch_id = len(imgs_pair)
 	
 	cLSGAN_model = cLSGAN(batch_size = batch_size, lr = lr)
 
-	d_optim, lsgan_optim, d_loss, lsgan_loss, g_logits = cLSGAN_model.build_graph(False)
+	d_optim, lsgan_optim, d_loss, lsgan_loss = cLSGAN_model.build_graph(False)
 
 	with tf.Session() as sess:
 		sess.run(tf.global_variables_initializer())
@@ -340,17 +343,23 @@ def train(input_dir, target_dir, save_dir, batch_size = 1, lr = 5e-5, sample_siz
 		for epoch in range(1, nb_epoch + 1):
 			print "Training Epoch %d" % epoch
 
-			for i in range(nb_batches):
+			for k in range(pretrain_times):
 
-				for j in range(5):
-			
-					real_images_pair = imgs_pair[np.random.randint(nb_samples, size = batch_size)]
+				for i in range(batch_id):
+
+					real_images_pair = imgs_pair[i:i+1]
+		
+					#for j in range(dis_train_times):
 
 					sess.run(d_optim, feed_dict = {cLSGAN_model.real_images_pair: real_images_pair})
 
-				sess.run(lsgan_optim, feed_dict = {cLSGAN_model.real_images_pair: real_images_pair})
+					sess.run(lsgan_optim, feed_dict = {cLSGAN_model.real_images_pair: real_images_pair})
 
-			if epoch % 5 == 0:
+					sess.run(lsgan_optim, feed_dict = {cLSGAN_model.real_images_pair: real_images_pair})
+
+			if epoch % 10 == 0:
+
+				real_images_pair = imgs_pair[np.random.randint(nb_samples, size = sample_size)]
 
 				sampled_imgs = sess.run(cLSGAN_model.sample_image(real_images_pair))
 	
